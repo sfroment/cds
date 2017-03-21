@@ -184,6 +184,7 @@ func (router *Router) init() {
 	router.Handle("/pipeline/type", GET(getPipelineTypeHandler))
 	router.Handle("/notification/type", GET(getUserNotificationTypeHandler))
 	router.Handle("/notification/state", GET(getUserNotificationStateValueHandler))
+	router.Handle("/notification/type/{type}", GET(getUserNotificationDefaultSettingsHandler))
 
 	// RepositoriesManager
 	router.Handle("/repositories_manager", GET(getRepositoriesManagerHandler))

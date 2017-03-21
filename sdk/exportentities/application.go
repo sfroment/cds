@@ -39,15 +39,15 @@ type ApplicationPipelineScheduler struct {
 }
 
 // ApplicationPipelineNotification represents exported notification
-type ApplicationPipelineNotification sdk.UserNotificationSettings
+type ApplicationPipelineNotification map[string]interface{}
 
 // ApplicationPipelineTrigger represents an exported pipeline trigger
 type ApplicationPipelineTrigger struct {
-	ProjectKey      *string     `json:"project_key" yaml:"project_key"`
-	ApplicationName *string     `json:"application_name" yaml:"application_name"`
+	ProjectKey      *string     `json:"project_key,omitempty" yaml:"project_key,omitempty"`
+	ApplicationName *string     `json:"application_name,omitempty" yaml:"application_name,omitempty"`
 	FromEnvironment *string     `json:"from_environment,omitempty" yaml:"from_environment,omitempty"`
 	ToEnvironment   *string     `json:"to_environment,omitempty" yaml:"to_environment,omitempty"`
-	Manual          bool        `json:"manual" yaml:"manual"`
+	Manual          *bool       `json:"manual,omitempty" yaml:"manual,omitempty"`
 	Conditions      []Condition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 }
 
@@ -93,6 +93,9 @@ func NewApplication(app *sdk.Application) (a *Application) {
 
 		pip.Triggers = make(map[string]ApplicationPipelineTrigger, len(ap.Triggers))
 		for _, t := range ap.Triggers {
+			if ap.Pipeline.Name != t.SrcPipeline.Name {
+				continue
+			}
 
 			c := make([]Condition, len(t.Prerequisites))
 			var i int
@@ -116,14 +119,17 @@ func NewApplication(app *sdk.Application) (a *Application) {
 			if t.DestApplication.Name != a.Name {
 				appName = &t.DestApplication.Name
 			}
-			pip.Triggers[t.DestPipeline.Name] = ApplicationPipelineTrigger{
+			ap := ApplicationPipelineTrigger{
 				ProjectKey:      pKey,
 				ApplicationName: appName,
 				ToEnvironment:   destEnv,
 				FromEnvironment: srcEnv,
-				Manual:          t.Manual,
 				Conditions:      c,
 			}
+			if t.Manual {
+				ap.Manual = &t.Manual
+			}
+			pip.Triggers[t.DestPipeline.Name] = ap
 		}
 
 		mapEnvOpts := map[string]*ApplicationPipelineOptions{}
@@ -165,7 +171,7 @@ func NewApplication(app *sdk.Application) (a *Application) {
 					if o.Notifications == nil {
 						o.Notifications = make(map[string]ApplicationPipelineNotification)
 					}
-					o.Notifications[string(t)] = n
+					o.Notifications[string(t)] = n.Config()
 				}
 			}
 		}

@@ -299,6 +299,12 @@ func getUserNotificationStateValueHandler(w http.ResponseWriter, r *http.Request
 	return WriteJSON(w, r, states, http.StatusOK)
 }
 
+func getUserNotificationDefaultSettingsHandler(w http.ResponseWriter, r *http.Request, db *gorp.DbMap, c *context.Ctx) error {
+	vars := mux.Vars(r)
+	t := vars["type"]
+	return WriteJSON(w, r, sdk.UserNotificationDefaultSettings[sdk.UserNotificationSettingsType(t)], http.StatusOK)
+}
+
 func getUserNotificationApplicationPipelineHandler(w http.ResponseWriter, r *http.Request, db *gorp.DbMap, c *context.Ctx) error {
 	vars := mux.Vars(r)
 	key := vars["key"]

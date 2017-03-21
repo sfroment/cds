@@ -1,6 +1,10 @@
 package sdk
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
 
 //UserNotificationSettingsType of notification
 type UserNotificationSettingsType string
@@ -20,6 +24,30 @@ const (
 	UserNotificationNever  UserNotificationEventType = "never"
 	UserNotificationChange UserNotificationEventType = "change"
 )
+
+//UserNotificationDefaultSettings are maps of default values
+var UserNotificationDefaultSettings = map[UserNotificationSettingsType]map[string]string{
+	EmailUserNotification: map[string]string{
+		"subject": "{{.cds.project}}/{{.cds.application}} {{.cds.pipeline}} {{.cds.environment}}#{{.cds.version}} {{.cds.status}}",
+		"body": `Project : {{.cds.project}}
+Application : {{.cds.application}}
+Pipeline : {{.cds.pipeline}}/{{.cds.environment}}#{{.cds.version}}
+Status : {{.cds.status}}
+Details : {{.cds.buildURL}}
+Triggered by : {{.cds.triggered_by.username}}
+Branch : {{.git.branch}}`,
+	},
+	JabberUserNotification: map[string]string{
+		"subject": "{{.cds.project}}/{{.cds.application}} {{.cds.pipeline}} {{.cds.environment}}#{{.cds.version}} {{.cds.status}}",
+		"body": `Project : {{.cds.project}}
+Application : {{.cds.application}}
+Pipeline : {{.cds.pipeline}}/{{.cds.environment}}#{{.cds.version}}
+Status : {{.cds.status}}
+Details : {{.cds.buildURL}}
+Triggered by : {{.cds.triggered_by.username}}
+Branch : {{.git.branch}}`,
+	},
+}
 
 // UserNotification is a settings on application_pipeline/env
 // to trigger notification on pipeline event
@@ -46,15 +74,16 @@ type UserNotificationSettings interface {
 	Failure() UserNotificationEventType
 	Start() bool
 	JSON() string
+	Config() map[string]interface{}
 }
 
 // JabberEmailUserNotificationSettings are jabber or email settings
 type JabberEmailUserNotificationSettings struct {
-	OnSuccess    UserNotificationEventType `json:"on_success"`
-	OnFailure    UserNotificationEventType `json:"on_failure"`
-	OnStart      bool                      `json:"on_start"`
-	SendToGroups bool                      `json:"send_to_groups"`
-	SendToAuthor bool                      `json:"send_to_author"`
+	OnSuccess    UserNotificationEventType `json:"on_success"`     //default value is 'change'
+	OnFailure    UserNotificationEventType `json:"on_failure"`     //default value is 'always'
+	OnStart      bool                      `json:"on_start"`       //default value is 'never'
+	SendToGroups bool                      `json:"send_to_groups"` //default value is 'false'
+	SendToAuthor bool                      `json:"send_to_author"` //default value is 'true'
 	Recipients   []string                  `json:"recipients"`
 	Template     UserNotificationTemplate  `json:"template"`
 }
@@ -78,6 +107,57 @@ func (n *JabberEmailUserNotificationSettings) Start() bool {
 func (n *JabberEmailUserNotificationSettings) JSON() string {
 	b, _ := json.Marshal(n)
 	return string(b)
+}
+
+//Config return a map of user notification settings
+func (n *JabberEmailUserNotificationSettings) Config() map[string]interface{} {
+	e := map[string]interface{}{}
+
+	fmt.Printf("%+v", n)
+
+	if n.OnSuccess != UserNotificationChange {
+		if string(n.OnSuccess) == "" {
+			e["on_success"] = string(UserNotificationNever)
+		} else {
+			e["on_success"] = string(n.OnSuccess)
+		}
+	}
+
+	if n.OnFailure != UserNotificationAlways {
+		if string(n.OnFailure) == "" {
+			e["on_failure"] = string(UserNotificationNever)
+		} else {
+			e["on_failure"] = string(n.OnFailure)
+		}
+	}
+
+	if n.OnStart {
+		e["on_start"] = n.OnStart
+	}
+
+	if !n.SendToAuthor {
+		e["send_to_author"] = n.SendToAuthor
+	}
+
+	if n.SendToGroups {
+		e["send_to_groups"] = n.SendToGroups
+	}
+
+	if n.Recipients != nil {
+		e["recipients"] = strings.Join(n.Recipients, ",")
+	}
+
+	d := UserNotificationDefaultSettings[JabberUserNotification]
+
+	if n.Template.Body != d["body"] {
+		e["body"] = n.Template.Body
+	}
+
+	if n.Template.Body != d["subject"] {
+		e["subject"] = n.Template.Subject
+	}
+
+	return e
 }
 
 // UserNotificationTemplate is the notification content
