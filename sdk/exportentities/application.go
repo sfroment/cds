@@ -314,3 +314,11 @@ EOV
 	t := template.New("t")
 	return t.Parse(tmpl)
 }
+
+//Application returns a sdk.Application
+func (a *Application) Application() (*sdk.Application, error) {
+
+	app := 
+
+	return nil, nil
+}
