@@ -317,8 +317,64 @@ EOV
 
 //Application returns a sdk.Application
 func (a *Application) Application() (*sdk.Application, error) {
+	app := &sdk.Application{
+		Name: a.Name,
+	}
 
-	app := 
+	if a.RepositoryManager != "" {
+		app.RepositoriesManager = &sdk.RepositoriesManager{
+			Name: a.RepositoryManager,
+		}
+	}
 
-	return nil, nil
+	if a.RepositoryName != "" {
+		app.RepositoryFullname = a.RepositoryName
+	}
+
+	for k, v := range a.Permissions {
+		app.ApplicationGroups = append(app.ApplicationGroups, sdk.GroupPermission{
+			Group:      sdk.Group{Name: k},
+			Permission: v,
+		})
+	}
+
+	for k, v := range a.Variables {
+		app.Variable = append(app.Variable, sdk.Variable{
+			Name:  k,
+			Type:  v.Type,
+			Value: v.Value,
+		})
+	}
+
+	for pipelineName, applicationPipeline := range a.Pipelines {
+		ap := sdk.ApplicationPipeline{
+			Pipeline: sdk.Pipeline{Name: pipelineName},
+		}
+
+		for _, t := range applicationPipeline.Triggers {
+			trig := sdk.PipelineTrigger{}
+
+			if t.FromEnvironment != nil {
+				trig.SrcEnvironment = sdk.Environment{
+					Name: *t.FromEnvironment,
+				}
+			}
+
+			if t.ToEnvironment != nil {
+				trig.DestEnvironment = sdk.Environment{
+					Name: *t.ToEnvironment,
+				}
+			}
+
+			if t.ApplicationName != nil {
+				trig.DestApplication = sdk.Application{Name: *t.ApplicationName}
+			}
+
+			ap.Triggers = append(ap.Triggers, trig)
+		}
+
+		app.Pipelines = append(app.Pipelines, ap)
+	}
+
+	return app, nil
 }
