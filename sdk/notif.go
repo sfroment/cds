@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
@@ -112,8 +111,6 @@ func (n *JabberEmailUserNotificationSettings) JSON() string {
 //Config return a map of user notification settings
 func (n *JabberEmailUserNotificationSettings) Config() map[string]interface{} {
 	e := map[string]interface{}{}
-
-	fmt.Printf("%+v", n)
 
 	if n.OnSuccess != UserNotificationChange {
 		if string(n.OnSuccess) == "" {

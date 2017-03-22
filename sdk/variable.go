@@ -41,7 +41,7 @@ var (
 	}
 )
 
-// NeedPlaceholder returns true if variable type is either secret or key 
+// NeedPlaceholder returns true if variable type is either secret or key
 func NeedPlaceholder(t string) bool {
 	switch t {
 	case SecretVariable, KeyVariable:
@@ -51,8 +51,8 @@ func NeedPlaceholder(t string) bool {
 	}
 }
 
-// VariablerFind return a variable given its name if it exists in array
-func VariablerFind(vars []Variable, s string) *Variable {
+// VariableFind return a variable given its name if it exists in array
+func VariableFind(vars []Variable, s string) *Variable {
 	for _, v := range vars {
 		if v.Name == s {
 			return &v

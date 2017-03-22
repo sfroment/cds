@@ -1,7 +1,9 @@
 package exportentities
 
 import (
-	"text/template"
+	"fmt"
+
+	"strings"
 
 	"github.com/ovh/cds/sdk"
 )
@@ -18,9 +20,9 @@ type Application struct {
 
 // ApplicationPipeline represents exported sdk.ApplicationPipeline
 type ApplicationPipeline struct {
-	Parameters map[string]VariableValue              `json:"parameters,omitempty" yaml:"parameters,omitempty"`
-	Triggers   map[string]ApplicationPipelineTrigger `json:"triggers,omitempty" yaml:"triggers,omitempty"`
-	Options    []ApplicationPipelineOptions          `json:"options,omitempty" yaml:"options,omitempty"`
+	Parameters map[string]VariableValue                `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Triggers   map[string][]ApplicationPipelineTrigger `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	Options    []ApplicationPipelineOptions            `json:"options,omitempty" yaml:"options,omitempty"`
 }
 
 // ApplicationPipelineOptions represents presence of hooks, pollers, notifications and scheduler for an tuple application pipeline environment
@@ -43,12 +45,13 @@ type ApplicationPipelineNotification map[string]interface{}
 
 // ApplicationPipelineTrigger represents an exported pipeline trigger
 type ApplicationPipelineTrigger struct {
-	ProjectKey      *string     `json:"project_key,omitempty" yaml:"project_key,omitempty"`
-	ApplicationName *string     `json:"application_name,omitempty" yaml:"application_name,omitempty"`
-	FromEnvironment *string     `json:"from_environment,omitempty" yaml:"from_environment,omitempty"`
-	ToEnvironment   *string     `json:"to_environment,omitempty" yaml:"to_environment,omitempty"`
-	Manual          *bool       `json:"manual,omitempty" yaml:"manual,omitempty"`
-	Conditions      []Condition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	ProjectKey      *string                  `json:"project_key,omitempty" yaml:"project_key,omitempty"`
+	ApplicationName *string                  `json:"application_name,omitempty" yaml:"application_name,omitempty"`
+	FromEnvironment *string                  `json:"from_environment,omitempty" yaml:"from_environment,omitempty"`
+	ToEnvironment   *string                  `json:"to_environment,omitempty" yaml:"environment,omitempty"`
+	Manual          bool                     `json:"manual" yaml:"manual"`
+	Conditions      []Condition              `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	Parameters      map[string]VariableValue `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 }
 
 // Condition represents sdk.Prerequisite
@@ -91,18 +94,33 @@ func NewApplication(app *sdk.Application) (a *Application) {
 			}
 		}
 
-		pip.Triggers = make(map[string]ApplicationPipelineTrigger, len(ap.Triggers))
-		for _, t := range ap.Triggers {
+		pip.Triggers = map[string][]ApplicationPipelineTrigger{}
+		for i := range ap.Triggers {
+			t := &ap.Triggers[i]
+			fmt.Println("Trigger : ", t.SrcPipeline.Name, t.SrcApplication.Name, t.SrcEnvironment.Name, t.DestPipeline.Name, t.DestApplication.Name, t.DestEnvironment.Name)
 			if ap.Pipeline.Name != t.SrcPipeline.Name {
 				continue
 			}
+			if a.Name != t.SrcApplication.Name {
+				continue
+			}
 
+			//Compute trigger Prerequisites
 			c := make([]Condition, len(t.Prerequisites))
 			var i int
 			for _, pr := range t.Prerequisites {
 				c[i] = Condition{
 					Variable: pr.Parameter,
 					Expected: pr.ExpectedValue,
+				}
+			}
+
+			//Compute trigger parameters
+			p := map[string]VariableValue{}
+			for _, param := range t.Parameters {
+				p[param.Name] = VariableValue{
+					Type:  param.Type,
+					Value: param.Value,
 				}
 			}
 
@@ -125,11 +143,13 @@ func NewApplication(app *sdk.Application) (a *Application) {
 				ToEnvironment:   destEnv,
 				FromEnvironment: srcEnv,
 				Conditions:      c,
+				Parameters:      p,
 			}
-			if t.Manual {
-				ap.Manual = &t.Manual
+			ap.Manual = t.Manual
+			if pip.Triggers[t.DestPipeline.Name] == nil {
+				pip.Triggers[t.DestPipeline.Name] = []ApplicationPipelineTrigger{}
 			}
-			pip.Triggers[t.DestPipeline.Name] = ap
+			pip.Triggers[t.DestPipeline.Name] = append(pip.Triggers[t.DestPipeline.Name], ap)
 		}
 
 		mapEnvOpts := map[string]*ApplicationPipelineOptions{}
@@ -217,102 +237,24 @@ func NewApplication(app *sdk.Application) (a *Application) {
 			i++
 		}
 
-		a.Pipelines[ap.Pipeline.Name] = pip
+		fmt.Println(ap.Pipeline.Name, len(pip.Options), len(pip.Parameters), len(pip.Triggers))
+		var ignore bool
+		if len(pip.Options) == 0 && len(pip.Parameters) == 0 && len(pip.Triggers) == 0 {
+			for _, v := range a.Pipelines {
+				for b := range v.Triggers {
+					if b == ap.Pipeline.Name {
+						ignore = true
+						break
+					}
+				}
+			}
+		}
+		if !ignore {
+			a.Pipelines[ap.Pipeline.Name] = pip
+		}
 	}
 
 	return
-}
-
-//HCLTemplate returns text/template
-func (a *Application) HCLTemplate() (*template.Template, error) {
-	tmpl := `name = "{{.Name}}"
-
-repo_manager = "{{.RepositoryManager}}
-repo_name = "{{.RepositoryName}}
-
-permissions = { {{ range $key, $value := .Permissions }}
-	"{{$key}}" = {{$value}}{{ end }}
-}
-
-variables = { 
-{{ range $key, $value := .Variables }}
-	"{{ $key }}" {
-		{{if eq $value.Type "text" -}} 
-		type = "{{$value.Type}}"
-		value = <<EOV
-{{$value.Value}}
-EOV
-		{{- else -}}
-		type = "{{$value.Type}}"
-		value = "{{$value.Value}}"
-		{{- end}}
-	} 
-{{ end }}
-
-pipelines = {
-{{ range $key, $value := .Pipelines }}
-    "{{ $key }}" {
-        {{if .Triggers -}}
-        triggers : {
-            {{ range $key, $value := .Triggers }}
-            "{{ $key }}" {
-                {{if $value.ProjectKey -}} project_key: "{{ $value.ProjectKey }}" {{- end}}
-                {{if $value.ApplicationName -}} application_name: "{{ $value.ApplicationName }}" {{- end}}
-                {{if $value.FromEnvironment -}} from_environment: "{{ $value.FromEnvironment }}" {{- end}}
-                {{if $value.ToEnvironment -}} to_environment: "{{ $value.ToEnvironment }}" {{- end}}
-                manual: {{ $value.Manual }}
-                {{range .Conditions -}}
-                conditions {
-                    variable: "{{ .Variable }}"
-                    expected: "{{ .Expected }}"
-                } 
-                {{- end}}
-            }
-            {{ end }}
-        }
-        {{- end}}
-        {{ range .Options }}
-        options {
-            {{if .Notifications -}}
-            notifications {
-                {{ range $key, $value := .Notifications -}}
-                    "{{ $key }}" { {{ $value.JSON }} }
-                {{- end}}
-            }
-            {{- end}}
-            {{if .Environment -}} environment: "{{ .Environment }}" {{- end}}
-            {{if .Hook -}} hook: "{{ .Hook }}" {{- end}}
-            {{if .Polling -}} polling: "{{ .Polling }}" {{- end}}
-            {{ range .Schedulers -}}
-            schedulers {
-                cron_expr: "{{.CronExpr}}"
-                {{if .Parameters -}}
-                parameters {
-                    {{ range $key, $value := .Parameters }}
-                    "{{ $key }}" {
-                        {{if eq $value.Type "text" -}} 
-                        type = "{{$value.Type}}"
-                        value = <<EOV
-{{$value.Value}}
-EOV
-                        {{- else -}}
-                        type = "{{$value.Type}}"
-                        value = "{{$value.Value}}"
-                        {{- end}}
-                    } 
-                {{ end }}
-                }
-                {{- end}}
-            }
-            {{- end}}
-        }
-        {{- end}}       
-    }
-{{end }}
-}
-`
-	t := template.New("t")
-	return t.Parse(tmpl)
 }
 
 //Application returns a sdk.Application
@@ -351,30 +293,230 @@ func (a *Application) Application() (*sdk.Application, error) {
 			Pipeline: sdk.Pipeline{Name: pipelineName},
 		}
 
-		for _, t := range applicationPipeline.Triggers {
-			trig := sdk.PipelineTrigger{}
+		for k, v := range applicationPipeline.Parameters {
+			ap.Parameters = append(ap.Parameters, sdk.Parameter{
+				Name:  k,
+				Type:  v.Type,
+				Value: v.Value,
+			})
+		}
 
-			if t.FromEnvironment != nil {
-				trig.SrcEnvironment = sdk.Environment{
-					Name: *t.FromEnvironment,
+		for d, triggers := range applicationPipeline.Triggers {
+			for _, t := range triggers {
+				trig := sdk.PipelineTrigger{
+					DestPipeline: sdk.Pipeline{Name: d},
+					SrcPipeline:  sdk.Pipeline{Name: pipelineName},
+				}
+
+				if t.FromEnvironment != nil {
+					trig.SrcEnvironment = sdk.Environment{
+						Name: *t.FromEnvironment,
+					}
+				}
+
+				if t.ToEnvironment != nil {
+					trig.DestEnvironment = sdk.Environment{
+						Name: *t.ToEnvironment,
+					}
+				}
+
+				if t.ApplicationName != nil {
+					trig.DestApplication = sdk.Application{Name: *t.ApplicationName}
+				} else {
+					trig.DestApplication = sdk.Application{Name: a.Name}
+				}
+
+				if t.ProjectKey != nil {
+					trig.DestProject = sdk.Project{Key: *t.ProjectKey}
+				}
+
+				for _, c := range t.Conditions {
+					trig.Prerequisites = append(trig.Prerequisites, sdk.Prerequisite{
+						Parameter:     c.Variable,
+						ExpectedValue: c.Expected,
+					})
+				}
+
+				ap.Triggers = append(ap.Triggers, trig)
+			}
+
+			for k, v := range applicationPipeline.Parameters {
+				ap.Parameters = append(ap.Parameters, sdk.Parameter{
+					Name:  k,
+					Type:  v.Type,
+					Value: v.Value,
+				})
+			}
+
+			for _, o := range applicationPipeline.Options {
+				env := sdk.DefaultEnv.Name
+				if o.Environment != nil {
+					env = *o.Environment
+				}
+
+				//Compute hooks
+				if o.Hook != nil && *o.Hook {
+					app.Hooks = append(app.Hooks, sdk.Hook{
+						Enabled: true,
+						Pipeline: sdk.Pipeline{
+							Name: pipelineName,
+						},
+					})
+				}
+
+				//Compute pollers
+				if o.Polling != nil && *o.Polling {
+					app.RepositoryPollers = append(app.RepositoryPollers, sdk.RepositoryPoller{
+						Pipeline: sdk.Pipeline{
+							Name: pipelineName,
+						},
+					})
+				}
+
+				//Compute notifications
+				notifs := map[sdk.UserNotificationSettingsType]sdk.UserNotificationSettings{}
+				for k, v := range o.Notifications {
+					switch k {
+					case string(sdk.JabberUserNotification), string(sdk.EmailUserNotification):
+						notif := sdk.JabberEmailUserNotificationSettings{}
+						if v["on_success"] == nil {
+							notif.OnSuccess = sdk.UserNotificationNever
+						} else {
+							notif.OnSuccess = sdk.UserNotificationEventType(v["on_success"].(string))
+						}
+						if v["on_failure"] == nil {
+							notif.OnFailure = sdk.UserNotificationAlways
+						} else {
+							str, ok := v["on_failure"].(string)
+							if !ok {
+								return nil, fmt.Errorf("Unrecogized notification.on_failure (%v) option on pipeline %s", v["on_failure"], pipelineName)
+							}
+							notif.OnFailure = sdk.UserNotificationEventType(str)
+						}
+						if v["on_start"] == nil {
+							notif.OnStart = false
+						} else {
+							var ok bool
+							notif.OnStart, ok = v["on_start"].(bool)
+							if !ok {
+								return nil, fmt.Errorf("Unrecogized notification.on_start (%v) option on pipeline %s", v["on_start"], pipelineName)
+							}
+						}
+						str, ok := v["recipients"].(string)
+						if !ok {
+							return nil, fmt.Errorf("Unrecogized notification.recipients (%v) option on pipeline %s", v["recipients"], pipelineName)
+						}
+						notif.Recipients = strings.Split(str, ",")
+
+						//send_to_author
+						if v["send_to_author"] == nil {
+							notif.SendToAuthor = false
+						} else {
+							var ok bool
+							notif.SendToAuthor, ok = v["send_to_author"].(bool)
+							if !ok {
+								return nil, fmt.Errorf("Unrecogized notification.send_to_author (%v) option on pipeline %s", v["send_to_author"], pipelineName)
+							}
+						}
+
+						//send_to_groups
+						if v["send_to_groups"] == nil {
+							notif.SendToGroups = true
+						} else {
+							var ok bool
+							notif.SendToGroups, ok = v["send_to_groups"].(bool)
+							if !ok {
+								return nil, fmt.Errorf("Unrecogized notification.send_to_groups (%v) option on pipeline %s", v["send_to_groups"], pipelineName)
+							}
+						}
+
+						d := sdk.UserNotificationDefaultSettings[sdk.UserNotificationSettingsType(k)]
+
+						//body
+						str, ok = v["body"].(string)
+						if !ok {
+							return nil, fmt.Errorf("Unrecogized notification.body (%v) option on pipeline %s", v["body"], pipelineName)
+						}
+						if str == "" {
+							str = d["body"]
+						}
+						notif.Template.Body = str
+
+						//subject
+						str, ok = v["subject"].(string)
+						if !ok {
+							return nil, fmt.Errorf("Unrecogized notification.subject (%v) option on pipeline %s", d["subject"], pipelineName)
+						}
+						if str == "" {
+							str = d["subject"]
+						}
+						notif.Template.Subject = str
+
+						notifs[sdk.UserNotificationSettingsType(k)] = &notif
+					}
+				}
+
+				app.Notifications = append(app.Notifications, sdk.UserNotification{
+					Environment:   sdk.Environment{Name: env},
+					Pipeline:      sdk.Pipeline{Name: pipelineName},
+					Notifications: notifs,
+				})
+
+				//Compute schedulers
+				for _, s := range o.Schedulers {
+					sched := sdk.PipelineScheduler{
+						EnvironmentName: env,
+						PipelineName:    pipelineName,
+						Crontab:         s.CronExpr,
+					}
+
+					for k, v := range s.Parameters {
+						sched.Args = append(sched.Args, sdk.Parameter{
+							Name:  k,
+							Type:  v.Type,
+							Value: v.Value,
+						})
+					}
+
+					app.Schedulers = append(app.Schedulers, sched)
 				}
 			}
-
-			if t.ToEnvironment != nil {
-				trig.DestEnvironment = sdk.Environment{
-					Name: *t.ToEnvironment,
-				}
-			}
-
-			if t.ApplicationName != nil {
-				trig.DestApplication = sdk.Application{Name: *t.ApplicationName}
-			}
-
-			ap.Triggers = append(ap.Triggers, trig)
 		}
 
 		app.Pipelines = append(app.Pipelines, ap)
 	}
+
+	//Browse all pipelines triggers to add triggered pipeline wich has been ignored in application pipelines
+	var ignoredPipelines []sdk.ApplicationPipeline
+	for _, p := range app.Pipelines {
+		for _, t := range p.Triggers {
+			if t.DestApplication.Name == app.Name {
+				var ignored = true
+				for _, p2 := range app.Pipelines {
+					if t.DestPipeline.Name == p2.Pipeline.Name {
+						ignored = false
+						break
+					}
+				}
+				if ignored {
+					var foundIgnoredPipelines bool
+					for i := range ignoredPipelines {
+						if t.DestPipeline.Name == ignoredPipelines[i].Pipeline.Name {
+							foundIgnoredPipelines = true
+							break
+						}
+					}
+					if !foundIgnoredPipelines {
+						ignoredPipelines = append(ignoredPipelines, sdk.ApplicationPipeline{
+							Pipeline: sdk.Pipeline{Name: t.DestPipeline.Name},
+						})
+					}
+				}
+			}
+
+		}
+	}
+	app.Pipelines = append(app.Pipelines, ignoredPipelines...)
 
 	return app, nil
 }

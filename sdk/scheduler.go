@@ -9,6 +9,7 @@ type PipelineScheduler struct {
 	ID              int64                       `json:"id" db:"id"`
 	ApplicationID   int64                       `json:"-" db:"application_id"`
 	PipelineID      int64                       `json:"-" db:"pipeline_id"`
+	PipelineName    string                      `json:"pipeline_name,omitempty" db:"-"`
 	EnvironmentID   int64                       `json:"-" db:"environment_id"`
 	EnvironmentName string                      `json:"environment_name" db:"-"`
 	Args            []Parameter                 `json:"args,omitempty" db:"-"`
