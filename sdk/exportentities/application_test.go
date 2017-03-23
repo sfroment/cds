@@ -308,13 +308,82 @@ pipelines:
 
 	var checkPipeline = func(p string) {
 		var found bool
+		var ap *sdk.ApplicationPipeline
 		for _, pip := range app.Pipelines {
 			if pip.Pipeline.Name == p {
 				found = true
+				ap = &pip
 				break
 			}
 		}
 		assert.True(t, found, "pipeline %s not found", p)
+
+		if ap == nil {
+			return
+		}
+
+		for k, v := range a.Pipelines[p].Parameters {
+			param := sdk.ParameterFind(ap.Parameters, k)
+			assert.NotNil(t, param, "Parameter %s not found", k)
+			if param == nil {
+				continue
+			}
+			assert.Equal(t, v.Type, param.Type)
+			assert.Equal(t, v.Value, param.Value)
+		}
+
+		for destp, triggers := range a.Pipelines[p].Triggers {
+			for _, trig := range triggers {
+				var triggerFound bool
+				for _, t1 := range ap.Triggers {
+					if destp == t1.DestPipeline.Name {
+						if trig.ApplicationName == nil {
+							trig.ApplicationName = &a.Name
+						}
+						if trig.FromEnvironment == nil {
+							trig.FromEnvironment = &sdk.DefaultEnv.Name
+						}
+						if trig.ToEnvironment == nil {
+							trig.ToEnvironment = &sdk.DefaultEnv.Name
+						}
+
+						if t1.DestApplication.Name == *trig.ApplicationName &&
+							t1.DestEnvironment.Name == *trig.ToEnvironment &&
+							t1.SrcEnvironment.Name == *trig.FromEnvironment &&
+							t1.SrcPipeline.Name == p &&
+							t1.DestPipeline.Name == destp {
+							triggerFound = true
+						}
+					}
+				}
+				assert.True(t, triggerFound, "Triggered pipeline %s not found", p)
+			}
+		}
+
+		for _, opts := range a.Pipelines[p].Options {
+			if opts.Hook != nil && *opts.Hook {
+				var hookFound bool
+				for _, h := range app.Hooks {
+					if h.Pipeline.Name == p {
+						hookFound = true
+						break
+					}
+				}
+				assert.True(t, hookFound, "Hook not found on pipeline %s", p)
+			}
+
+			if opts.Polling != nil && *opts.Polling {
+				var pollerFound bool
+				for _, h := range app.RepositoryPollers {
+					if h.Pipeline.Name == p {
+						pollerFound = true
+						break
+					}
+				}
+				assert.True(t, pollerFound, "Poller not found on pipeline %s", p)
+			}
+		}
+
 	}
 
 	checkPipeline("build-api-worker-hatchery-cli-github")
@@ -323,5 +392,45 @@ pipelines:
 	checkPipeline("build-ui-ng2-cache")
 	checkPipeline("cds-integration")
 	checkPipeline("deploy-marathon-app")
+
+	var checkNotification = func(pipeline, env, notifType string) {
+		var notifFound bool
+		var n sdk.UserNotificationSettings
+		for _, notif := range app.Notifications {
+			if notif.Pipeline.Name == pipeline && notif.Environment.Name == env {
+				var ok bool
+				n, ok = notif.Notifications[sdk.UserNotificationSettingsType(notifType)]
+				if ok {
+					notifFound = true
+					break
+				}
+			}
+		}
+		assert.True(t, notifFound)
+		assert.NotNil(t, n)
+
+		if n != nil {
+			var expected map[string]interface{}
+			for _, opts := range a.Pipelines[pipeline].Options {
+				if opts.Environment == nil {
+					opts.Environment = &sdk.DefaultEnv.Name
+				}
+
+				if *opts.Environment != env {
+					continue
+				}
+
+				for k, v := range opts.Notifications {
+					if k == notifType {
+						expected = v
+					}
+				}
+			}
+			assert.NotNil(t, expected)
+		}
+
+	}
+
+	checkNotification("build-api-worker-hatchery-cli-github", sdk.DefaultEnv.Name, "jabber")
 
 }

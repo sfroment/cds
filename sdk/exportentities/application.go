@@ -312,12 +312,16 @@ func (a *Application) Application() (*sdk.Application, error) {
 					trig.SrcEnvironment = sdk.Environment{
 						Name: *t.FromEnvironment,
 					}
+				} else {
+					trig.SrcEnvironment = sdk.DefaultEnv
 				}
 
 				if t.ToEnvironment != nil {
 					trig.DestEnvironment = sdk.Environment{
 						Name: *t.ToEnvironment,
 					}
+				} else {
+					trig.DestEnvironment = sdk.DefaultEnv
 				}
 
 				if t.ApplicationName != nil {
