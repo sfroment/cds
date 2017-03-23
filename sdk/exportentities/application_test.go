@@ -436,5 +436,4 @@ pipelines:
 	checkNotification("cds-integration", "p191-preprod", "jabber")
 	checkNotification("deploy-marathon-app", "p191-prod", "jabber")
 	checkNotification("deploy-marathon-app", "iad1-prod", "jabber")
-
 }

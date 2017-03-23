@@ -20,6 +20,9 @@ var (
 //Message list
 var (
 	MsgAppCreated                          = &Message{"MsgAppCreated", trad{FR: "L'application %s a été créée avec succès", EN: "Application %s successfully created"}, nil}
+	MsgAppImportAppNotFound                = &Message{"MsgAppImportAppNotFound", trad{FR: "Import impossible: l'application %s n'existe pas", EN: "Unable to import: application %s not found"}, nil}
+	MsgAppImportPipelineNotFound           = &Message{"MsgAppImportPipelineNotFound", trad{FR: "Import impossible: le pipeline %s n'existe pas", EN: "Unable to import: pipeline %s not found"}, nil}
+	MsgAppImportEnvNotFound                = &Message{"MsgAppImportEnvNotFound", trad{FR: "Import impossible: l'environnement %s n'existe pas", EN: "Unable to import: environment %s not found"}, nil}
 	MsgPipelineCreated                     = &Message{"MsgPipelineCreated", trad{FR: "Le pipeline %s a été créé avec succès", EN: "Pipeline %s successfully created"}, nil}
 	MsgPipelineCreationAborted             = &Message{"MsgPipelineCreationAborted", trad{FR: "La création du pipeline %s a été abandonnée", EN: "Pipeline %s creation aborted"}, nil}
 	MsgPipelineExists                      = &Message{"MsgPipelineExists", trad{FR: "Le pipeline %s existe déjà", EN: "Pipeline %s already exist"}, nil}

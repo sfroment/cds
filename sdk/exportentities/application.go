@@ -97,7 +97,6 @@ func NewApplication(app *sdk.Application) (a *Application) {
 		pip.Triggers = map[string][]ApplicationPipelineTrigger{}
 		for i := range ap.Triggers {
 			t := &ap.Triggers[i]
-			fmt.Println("Trigger : ", t.SrcPipeline.Name, t.SrcApplication.Name, t.SrcEnvironment.Name, t.DestPipeline.Name, t.DestApplication.Name, t.DestEnvironment.Name)
 			if ap.Pipeline.Name != t.SrcPipeline.Name {
 				continue
 			}
@@ -237,7 +236,6 @@ func NewApplication(app *sdk.Application) (a *Application) {
 			i++
 		}
 
-		fmt.Println(ap.Pipeline.Name, len(pip.Options), len(pip.Parameters), len(pip.Triggers))
 		var ignore bool
 		if len(pip.Options) == 0 && len(pip.Parameters) == 0 && len(pip.Triggers) == 0 {
 			for _, v := range a.Pipelines {

@@ -77,6 +77,7 @@ func (router *Router) init() {
 	router.Handle("/project/{permProjectKey}/notifications", GET(getProjectNotificationsHandler))
 
 	// Application
+	router.Handle("/project/{permProjectKey}/application/import", POST(importApplicationHandler))
 	router.Handle("/project/{key}/application/{permApplicationName}", GET(getApplicationHandler), PUT(updateApplicationHandler), DELETE(deleteApplicationHandler))
 	router.Handle("/project/{key}/application/{permApplicationName}/branches", GET(getApplicationBranchHandler))
 	router.Handle("/project/{key}/application/{permApplicationName}/version", GET(getApplicationBranchVersionHandler))

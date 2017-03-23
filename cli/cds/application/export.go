@@ -53,11 +53,10 @@ func exportCmd() *cobra.Command {
 					sdk.Exit("Error %s\n", err)
 				}
 			}
-
 		},
 	}
 
-	cmd.Flags().StringVarP(&exportFormat, "format", "", "yaml", "Format: json|yaml|hcl")
+	cmd.Flags().StringVarP(&exportFormat, "format", "", "yaml", "Format: json|yaml")
 	cmd.Flags().StringVarP(&exportOutput, "output", "", "", "Output filename")
 
 	return cmd

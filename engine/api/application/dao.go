@@ -262,3 +262,18 @@ func loadapplications(db gorp.SqlExecutor, u *sdk.User, opts []LoadOptionFunc, q
 
 	return apps, nil
 }
+
+// Exists Check if the given application exist in database
+func Exists(db gorp.SqlExecutor, projectID int64, name string) (bool, error) {
+	query := `SELECT COUNT(id) FROM application WHERE project_id = $1 AND name= $2`
+
+	var nb int64
+	err := db.QueryRow(query, projectID, name).Scan(&nb)
+	if err != nil {
+		return false, err
+	}
+	if nb != 0 {
+		return true, nil
+	}
+	return false, nil
+}
