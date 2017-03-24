@@ -152,8 +152,19 @@ func canRunJob(h Interface, job *sdk.PipelineBuildJob, model *sdk.Model, hostnam
 		return false
 	}
 
+	vars := sdk.ParametersToMap(job.Parameters)
+
 	// Common check
 	for _, r := range job.Job.Action.Requirements {
+
+		//Interpolate requirements values
+		btes, err := sdk.Interpolate(vars, []byte(r.Value))
+		if err != nil {
+			log.Warning("canRunJob> Unable to interpolate %s", r.Value)
+		} else {
+			r.Value = string(btes)
+		}
+
 		// If requirement is a Model requirement, it's easy. It's either can or can't run
 		if r.Type == sdk.ModelRequirement {
 			return r.Value == model.Name
