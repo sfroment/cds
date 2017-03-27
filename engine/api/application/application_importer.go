@@ -5,7 +5,6 @@ import (
 
 	"github.com/ovh/cds/engine/api/environment"
 	"github.com/ovh/cds/engine/api/group"
-	"github.com/ovh/cds/engine/api/hook"
 	"github.com/ovh/cds/engine/api/pipeline"
 	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/engine/api/trigger"
@@ -62,13 +61,7 @@ func Import(db gorp.SqlExecutor, proj *sdk.Project, app *sdk.Application, repoma
 		if err := repositoriesmanager.InsertForApplication(db, app, proj.Key); err != nil {
 			return err
 		}
-		//Manage hook
-		if _, err := hook.CreateHook(db, proj.Key, repomanager, app.RepositoryFullname, app, &app.Pipelines[0].Pipeline); err != nil {
-			return err
-		}
-		if msgChan != nil {
-			msgChan <- sdk.NewMessage(sdk.MsgHookCreated, app.RepositoryFullname, app.Pipelines[0].Pipeline.Name)
-		}
+
 	}
 
 	return nil
@@ -230,5 +223,10 @@ func ImportPipelines(db gorp.SqlExecutor, proj *sdk.Project, app *sdk.Applicatio
 			}
 		}
 	}
+
+	if err := loadPipelines(db, app, u); err != nil {
+		return sdk.WrapError(err, "application.ImportPipelines> Unable to load application pipelines %s/%s", proj.Key, app.Name)
+	}
+
 	return nil
 }

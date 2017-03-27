@@ -287,6 +287,7 @@ func (a *Application) Application() (*sdk.Application, error) {
 	}
 
 	for pipelineName, applicationPipeline := range a.Pipelines {
+		fmt.Printf(">> Pipeline : %s %+v\n", pipelineName, applicationPipeline)
 		ap := sdk.ApplicationPipeline{
 			Pipeline: sdk.Pipeline{Name: pipelineName},
 		}
@@ -351,6 +352,7 @@ func (a *Application) Application() (*sdk.Application, error) {
 			}
 
 			for _, o := range applicationPipeline.Options {
+				fmt.Println(">> Option : ", o)
 				env := sdk.DefaultEnv.Name
 				if o.Environment != nil {
 					env = *o.Environment
@@ -378,6 +380,7 @@ func (a *Application) Application() (*sdk.Application, error) {
 				//Compute notifications
 				notifs := map[sdk.UserNotificationSettingsType]sdk.UserNotificationSettings{}
 				for k, v := range o.Notifications {
+					fmt.Println(">> Notification : ", k)
 					switch k {
 					case string(sdk.JabberUserNotification), string(sdk.EmailUserNotification):
 						notif := sdk.JabberEmailUserNotificationSettings{}

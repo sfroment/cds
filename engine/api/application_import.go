@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -14,7 +15,10 @@ import (
 	"github.com/ovh/cds/engine/api/context"
 	"github.com/ovh/cds/engine/api/environment"
 	"github.com/ovh/cds/engine/api/group"
+	"github.com/ovh/cds/engine/api/hook"
+	"github.com/ovh/cds/engine/api/notification"
 	"github.com/ovh/cds/engine/api/pipeline"
+	"github.com/ovh/cds/engine/api/poller"
 	"github.com/ovh/cds/engine/api/project"
 	"github.com/ovh/cds/engine/api/sanity"
 	"github.com/ovh/cds/engine/log"
@@ -29,7 +33,7 @@ func importApplicationHandler(w http.ResponseWriter, r *http.Request, db *gorp.D
 	forceUpdate := FormBool(r, "forceUpdate")
 
 	// Load project
-	proj, errp := project.Load(db, key, c.User, project.LoadOptions.Default)
+	proj, errp := project.Load(db, key, c.User, project.LoadOptions.Default, project.LoadOptions.WithEnvironments)
 	if errp != nil {
 		return sdk.WrapError(errp, "importApplicationHandler> Unable to load project %s", key)
 	}
@@ -169,8 +173,99 @@ func importApplicationHandler(w http.ResponseWriter, r *http.Request, db *gorp.D
 		} else {
 			globalError = application.Import(tx, proj, app, app.RepositoriesManager, c.User, msgChan)
 		}
-	}
 
+		if globalError == nil && app.RepositoriesManager != nil {
+			//Manage hook
+			for _, h := range app.Hooks {
+				for _, p := range app.Pipelines {
+					if p.Pipeline.Name == h.Pipeline.Name {
+						h.Pipeline = p.Pipeline
+						break
+					}
+				}
+				log.Debug("importApplicationHandler> Insert hook %s(%d)", h.Pipeline.Name, h.Pipeline.ID)
+				if h.Pipeline.ID == 0 {
+					msgChan <- sdk.NewMessage(sdk.MsgAppImportPipelineNotFound, h.Pipeline.Name)
+					return sdk.WrapError(sdk.ErrPipelineNotFound, "importApplicationHandler> Pipeline not found for hook %s")
+				}
+				if _, err := hook.CreateHook(db, proj.Key, app.RepositoriesManager, app.RepositoryFullname, app, &h.Pipeline); err != nil {
+					return sdk.WrapError(err, "importApplicationHandler> Unable to insert hook on application %s/%s on pipeline %s", proj.Key, app.Name, h.Pipeline.Name)
+				}
+				if msgChan != nil {
+					msgChan <- sdk.NewMessage(sdk.MsgHookCreated, app.RepositoryFullname, &h.Pipeline.Name)
+				}
+			}
+
+			//Manager Pollers
+			for _, h := range app.RepositoryPollers {
+				for _, p := range app.Pipelines {
+					if p.Pipeline.Name == h.Pipeline.Name {
+						h.Pipeline = p.Pipeline
+						break
+					}
+				}
+				log.Debug("importApplicationHandler> Insert poller %s(%d)", h.Pipeline.Name, h.Pipeline.ID)
+				if h.Pipeline.ID == 0 {
+					msgChan <- sdk.NewMessage(sdk.MsgAppImportPipelineNotFound, h.Pipeline.Name)
+					return sdk.WrapError(sdk.ErrPipelineNotFound, "importApplicationHandler> Pipeline %s not found", h.Pipeline.Name)
+				}
+
+				poll := &sdk.RepositoryPoller{
+					Application: *app,
+					Pipeline:    h.Pipeline,
+				}
+
+				if err := poller.Insert(db, poll); err != nil {
+					return sdk.WrapError(err, "importApplicationHandler> Unable to insert poller on application %s/%s on pipeline %s", proj.Key, app.Name, h.Pipeline.Name)
+				}
+				if msgChan != nil {
+					msgChan <- sdk.NewMessage(sdk.MsgPollerCreated, app.RepositoryFullname, &h.Pipeline.Name)
+				}
+			}
+		}
+
+		if globalError == nil {
+			for _, notif := range app.Notifications {
+				fmt.Printf("%+v\n", notif)
+				var pipID, envID int64
+				for _, p := range app.Pipelines {
+					if p.Pipeline.Name == notif.Pipeline.Name {
+						pipID = p.Pipeline.ID
+						break
+					}
+				}
+
+				if notif.Environment.Name == "" || notif.Environment.Name == sdk.DefaultEnv.Name {
+					notif.Environment = sdk.DefaultEnv
+					envID = sdk.DefaultEnv.ID
+				} else {
+					for _, e := range proj.Environments {
+						if e.Name == notif.Environment.Name {
+							envID = e.ID
+							break
+						}
+					}
+				}
+
+				if pipID == 0 {
+					return sdk.WrapError(sdk.ErrPipelineNotFound, "importApplicationHandler> Pipeline %s not found for notification %+v", notif.Pipeline.Name, notif)
+				}
+
+				if envID == 0 {
+					return sdk.WrapError(sdk.ErrNoEnvironment, "importApplicationHandler> Environment %s not found for notification %+v", notif.Pipeline.Name, notif)
+				}
+
+				if err := notification.InsertOrUpdateUserNotificationSettings(tx, app.ID, pipID, envID, &notif); err != nil {
+					return sdk.WrapError(err, "importApplicationHandler> Unable to insert notification on application %s/%s on pipeline %s", proj.Key, app.Name, notif.Pipeline.Name)
+				}
+			}
+		}
+		/*
+			for _, sched := range app.Schedulers {
+
+			}
+		*/
+	}
 	close(msgChan)
 	<-done
 

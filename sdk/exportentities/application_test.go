@@ -437,3 +437,92 @@ pipelines:
 	checkNotification("deploy-marathon-app", "p191-prod", "jabber")
 	checkNotification("deploy-marathon-app", "iad1-prod", "jabber")
 }
+
+func TestApplication_Application_2(t *testing.T) {
+	yml := `name: app4
+permissions:
+  CDS: 7
+pipelines:
+  Build:
+    triggers:
+      Deploy:
+      - environment: prod
+        manual: true
+    options:
+    - notifications:
+        email:
+          body: " Project : {{.cds.project}} \nApplication : {{.cds.application}}\nPipeline
+            : {{.cds.pipeline}}/{{.cds.environment}}#{{.cds.buildNumber}}\nStatuts
+            : {{.cds.status}}\nDetails : {{.cds.buildURL}}\nTriggered by : {{.cds.triggered_by.username}}\nBranch
+            : {{.git.branch}}"
+          on_success: always
+          recipients: ""
+          send_to_groups: true
+          subject: '{{.cds.project}}/{{.cds.application}} {{.cds.pipeline}} {{.cds.environment}}#{{.cds.version}}
+            {{.cds.status}}'
+  Deploy:
+    options:
+    - environment: prod
+      notifications:
+        jabber:
+          body: |-
+            Status : {{.cds.status}}
+            Branch : {{.git.branch}}
+            Details : {{.cds.buildURL}}
+          on_start: true
+          on_success: always
+          recipients: blabla
+          send_to_groups: true
+          subject: '{{.cds.project}}/{{.cds.application}} {{.cds.pipeline}} {{.cds.environment}}'
+`
+
+	a := &Application{}
+	test.NoError(t, yaml.Unmarshal([]byte(yml), a))
+
+	app, err := a.Application()
+	test.NoError(t, err)
+
+	assert.NotNil(t, app)
+
+	var checkNotification = func(pipeline, env, notifType string) {
+		var notifFound bool
+		var n sdk.UserNotificationSettings
+		for _, notif := range app.Notifications {
+			if notif.Pipeline.Name == pipeline && notif.Environment.Name == env {
+				var ok bool
+				n, ok = notif.Notifications[sdk.UserNotificationSettingsType(notifType)]
+				if ok {
+					notifFound = true
+					break
+				}
+			}
+		}
+		assert.True(t, notifFound)
+		assert.NotNil(t, n)
+
+		if n != nil {
+			var expected map[string]interface{}
+			for _, opts := range a.Pipelines[pipeline].Options {
+				if opts.Environment == nil {
+					opts.Environment = &sdk.DefaultEnv.Name
+				}
+
+				if *opts.Environment != env {
+					continue
+				}
+
+				for k, v := range opts.Notifications {
+					if k == notifType {
+						expected = v
+					}
+				}
+			}
+			assert.NotNil(t, expected)
+		}
+
+	}
+
+	checkNotification("Duild", sdk.DefaultEnv.Name, "email")
+	checkNotification("Deploy", "prod", "jabber")
+
+}
