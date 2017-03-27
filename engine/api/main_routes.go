@@ -221,6 +221,9 @@ func (router *Router) init() {
 	router.Handle("/project/{permProjectKey}/template", POST(applyTemplateHandler))
 	router.Handle("/project/{key}/application/{permApplicationName}/template", POST(applyTemplateOnApplicationHandler))
 
+	// UI
+	router.Handle("/config/user", Auth(true), GET(ConfigUserHandler))
+
 	// Users
 	router.Handle("/user", GET(GetUsers))
 	router.Handle("/user/signup", Auth(false), POST(AddUser))
@@ -233,7 +236,6 @@ func (router *Router) init() {
 
 	// Workers
 	router.Handle("/worker", Auth(false), GET(getWorkersHandler), POST(registerWorkerHandler))
-	router.Handle("/worker/status", GET(getWorkerModelStatus))
 	router.Handle("/worker/refresh", POST(refreshWorkerHandler))
 	router.Handle("/worker/checking", POST(workerCheckingHandler))
 	router.Handle("/worker/waiting", POST(workerWaitingHandler))
