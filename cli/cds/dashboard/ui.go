@@ -2,8 +2,6 @@ package dashboard
 
 import (
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/gizak/termui"
 	"github.com/skratchdot/open-golang/open"
@@ -14,7 +12,7 @@ import (
 // Termui wrapper designed for dashboard creation
 type Termui struct {
 	header *termui.Par
-	msg    *termui.Par
+	msg    string
 
 	current string
 
@@ -39,46 +37,38 @@ type Termui struct {
 	pipelines        [5][]*termui.Gauge
 
 	// monitoring
-	monitoring *termui.Row
-	titles     []*termui.Par
-	actions    [5][]*termui.Par
-	rowCount   int
-	pbs        []sdk.PipelineBuild
-
-	buildingPipelines []*termui.Row
-
-	// status
-	infoQueue          string
-	distribQueue       map[string]int64
-	queue              *ScrollableList
-	queueSelect        *ScrollableList
-	queueCurrentJobURL string
-	status             *termui.Par
-
-	// mutex
-	sync.Mutex
+	queue                   *ScrollableList
+	building                *ScrollableList
+	statusWorkerList        *ScrollableList
+	statusHatcheriesWorkers *ScrollableList
+	statusWorkerModels      *ScrollableList
+	status                  *ScrollableList
+	currentURL              string
 }
 
 // Constants for each view of cds ui
 const (
 	HomeView         = "home"
 	DashboardView    = "dashboard"
-	MonitoringView   = "monitoring"
-	StatusView       = "status"
 	ProjectSelected  = "project"
 	AppSelected      = "app"
 	PipelineSelected = "pipeline"
 	LogsSelected     = "logs"
+
+	QueueSelected             = "queue"
+	BuildingSelected          = "building"
+	WorkersListSelected       = "workersList"
+	WorkerModelsSelected      = "workerModels"
+	HatcheriesWorkersSelected = "hatcheriesWorkers"
+	StatusSelected            = "status"
+	MonitoringView            = "monitoring"
 )
 
 func (ui *Termui) init() {
-	// Initialize termui
-	err := termui.Init()
-	if err != nil {
+	if err := termui.Init(); err != nil {
 		panic(err)
 	}
 
-	// Setup handlers
 	termui.Handle("/timer/1s", func(e termui.Event) {
 		t := e.Data.(termui.EvtTimer)
 		ui.draw(int(t.Count))
@@ -89,7 +79,7 @@ func (ui *Termui) init() {
 	})
 
 	termui.Handle("/sys/kbd", func(e termui.Event) {
-		ui.msg.Text = fmt.Sprintf("No command for %v", e)
+		ui.msg = fmt.Sprintf("No command for %v", e)
 	})
 
 	termui.Handle("/sys/kbd/h", func(termui.Event) {
@@ -103,13 +93,8 @@ func (ui *Termui) init() {
 	})
 
 	termui.Handle("/sys/kbd/m", func(e termui.Event) {
-		ui.current = "monitoring"
+		ui.current = MonitoringView
 		ui.showMonitoring()
-	})
-
-	termui.Handle("/sys/kbd/s", func(e termui.Event) {
-		ui.current = "status"
-		ui.showStatus()
 	})
 
 	termui.Handle("/sys/kbd/k", func(e termui.Event) {
@@ -129,13 +114,15 @@ func (ui *Termui) init() {
 			ui.selected = LogsSelected
 			ui.selectedLogs = 1
 			ui.drawProjects()
+		} else if ui.current == MonitoringView {
+			ui.monitoringSelectNext()
 		}
 	})
 
 	termui.Handle("/sys/kbd/<down>", func(e termui.Event) {
 		switch ui.current {
-		case StatusView:
-			ui.queue.CursorDown()
+		case MonitoringView:
+			ui.monitoringCursorDown()
 		case DashboardView:
 			switch ui.selected {
 			case ProjectSelected:
@@ -168,8 +155,8 @@ func (ui *Termui) init() {
 	})
 	termui.Handle("/sys/kbd/<up>", func(e termui.Event) {
 		switch ui.current {
-		case StatusView:
-			ui.queue.CursorUp()
+		case MonitoringView:
+			ui.monitoringCursorUp()
 		case DashboardView:
 			switch ui.selected {
 			case ProjectSelected:
@@ -243,7 +230,6 @@ func (ui *Termui) init() {
 				break
 			case PipelineSelected:
 				if ui.selectedPipeline == ui.pipCount {
-
 					ui.selected = LogsSelected
 					ui.selectedLogs = 1
 					ui.drawProjects()
@@ -257,46 +243,29 @@ func (ui *Termui) init() {
 	})
 
 	termui.Handle("/sys/kbd/<enter>", func(e termui.Event) {
-		if ui.current == StatusView {
-			open.Run(ui.queueCurrentJobURL)
+		if ui.current == MonitoringView && ui.currentURL != "" {
+			open.Run(ui.currentURL)
 		}
 	})
 
-	ui.initHeader()
 	ui.initProjects()
-	ui.initMsg()
+	ui.initHeader()
 
 	ui.showHome()
 }
 
 func (ui *Termui) draw(i int) {
-	ui.Lock()
-	defer ui.Unlock()
-
-	// Add a moving part to check that ui is not frozen
-	ui.header.Text = fmt.Sprintf("(h)ome | (d)ashboard | (m)onitoring | (s)tatus | (q)uit | %s", time.Now().String()[11:19])
-
-	// calculate layout
+	ui.header.Text = " [CDS | (h)ome | (d)ashboard | (s)tatus | (q)uit](fg-cyan) | " + ui.msg
 	termui.Body.Align()
 	termui.Render(termui.Body)
 }
 
 func (ui *Termui) initHeader() {
-	p := termui.NewPar("(h)ome | (d)ashboard | (m)onitoring | (s)tatus | (q)uit")
-	p.Height = 3
-	p.TextFgColor = termui.ColorWhite
-	p.BorderLabel = "Menu"
-	p.BorderFg = termui.ColorCyan
-
-	ui.header = p
-}
-
-func (ui *Termui) initMsg() {
 	p := termui.NewPar("")
-	p.Height = 3
+	p.Height = 1
 	p.TextFgColor = termui.ColorWhite
 	p.BorderLabel = ""
 	p.BorderFg = termui.ColorCyan
-
-	ui.msg = p
+	p.Border = false
+	ui.header = p
 }
