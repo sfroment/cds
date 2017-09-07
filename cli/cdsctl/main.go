@@ -36,6 +36,7 @@ func main() {
 			workflow,
 			usr,
 			health,
+			token,
 		},
 	)
 
